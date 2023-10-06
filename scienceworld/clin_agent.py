@@ -6,43 +6,46 @@ import json
 
 from scienceworld import ScienceWorldEnv
 
-from model_utils import get_best_matched_action_using_sent_transformer, getTokenLength, \
-    get_plan_from_chatgpt, get_clin_sw_next_action_multi_turn, get_chatgpt_sw_plan_reflection, \
-    summarize_trace_for_preconditions_sTsW, precision_recall_f1, get_change_in_states, get_clin_sw_next_action_multi_turn_ablated
+from model_utils import get_best_matched_action_using_sent_transformer,\
+    get_clin_sw_next_action_multi_turn, \
+    summarize_trace_for_preconditions_sTsW
 import torch
 from sentence_transformers import SentenceTransformer
 import json
 
 
-def clinWithPlanModel(args):
-    """ CLIN agent with a plan -- First generates a high level plan and then 
-    generates low level actions """
+def clinAgent(args):
+    """ CLIN agent """
+    task_num = int(args['task_num'])
+    var_num = int(args["var_num"])
+    print(f"Running CLIN agent for taskIdx:{task_num}, varIdx:{var_num}")
     exitCommands = ["quit", "exit"]
     sent_transformer_model = SentenceTransformer('bert-base-nli-mean-tokens', device=args['device'])
 
 
     ## load gold summaries obtained from gold traces
-    gold_summaries = []
     gold_path = args['gold_traces']
-    if 'jsonl' in gold_path:
-        with open(gold_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                gold_summaries.append(json.loads(line.rstrip('\n|\r')))
-    elif 'json' in gold_path:
-        gold_summaries.append(json.load(open(gold_path, 'r', encoding='utf-8')))
-    else: # read all files in the gold directory
-        print("Reading gold traces")
-        for file_name in os.listdir(gold_path):
-            if file_name.endswith('.json'):
-                f = open(os.path.join(gold_path, file_name))
-                try:
-                    data = json.load(f)
-                    gold_summaries.append(data)
-                except:
-                    print("Could not read gold trace file")
-                    break
-
-    print("Done reading gold traces")
+    gold_summaries = []
+    if gold_path:
+        if 'jsonl' in gold_path:
+            with open(gold_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    gold_summaries.append(json.loads(line.rstrip('\n|\r')))
+        elif 'json' in gold_path:
+            gold_summaries.append(json.load(open(gold_path, 'r', encoding='utf-8')))
+        else: # read all files in the gold directory
+            print("Reading gold traces")
+            for file_name in os.listdir(gold_path):
+                if file_name.endswith('.json'):
+                    f = open(os.path.join(gold_path, file_name))
+                    try:
+                        data = json.load(f)
+                        gold_summaries.append(data)
+                    except:
+                        print("Could not read gold trace file")
+                        break
+        print("Done reading gold traces")
+        
     gold_summaries_map = {}
     gold_histories_map = {}
     quadrant = args['quadrant']
@@ -51,7 +54,7 @@ def clinWithPlanModel(args):
     for sum in gold_summaries:
         # TODO: check partition
         if sum["taskIdx"] in gold_summaries_map:
-            if quadrant == 1 or quadrant == 0:
+            if quadrant == 1:
                 gold_summaries_map[sum["taskIdx"]].update({sum["variationIdx"]: sum["summary"]})
             elif quadrant == 2:
                 gold_summaries_map[sum["taskIdx"]].update({sum["variationIdx"]: sum["q2_summary"]})
@@ -60,7 +63,7 @@ def clinWithPlanModel(args):
             
             gold_histories_map[sum["taskIdx"]].update({sum["variationIdx"]: sum["history"]})
         else:
-            if quadrant == 1 or quadrant == 0:
+            if quadrant == 1:
                 gold_summaries_map[sum["taskIdx"]] = {sum["variationIdx"]: sum["summary"]}
             elif quadrant == 2:
                 gold_summaries_map[sum["taskIdx"]] = {sum["variationIdx"]: sum["q2_summary"]}
@@ -69,20 +72,12 @@ def clinWithPlanModel(args):
             
             gold_histories_map[sum["taskIdx"]] = {sum["variationIdx"]: sum["history"]}
 
-    # print(gold_summaries_map["0"])
-    
-
     simplificationStr = args['simplification_str']
     numEpisodes = args['num_episodes']
     gpt_model = args['gpt_model']
-    append_plan = args['append_plan']
-    eval_plan = bool(args['eval_plan'])
     temperature = args['temperature']
-    use_given_cheatsheet = bool(args['use_given_cheatsheet'])
     use_gold_memory_in_ep0 = bool(args['use_gold_memory_in_ep0'])
     summarize_end_of_episode = bool(args['summarize_end_of_episode'])
-    ablate_rationale = bool(args['ablate_rationale'])
-    ablate_grounding = bool(args['ablate_grounding'])
 
     # Keep track of the agent's final scores
     finalScores = []
@@ -93,58 +88,29 @@ def clinWithPlanModel(args):
 
     summaryfname = args['output_path_prefix'] + "summary.txt"
     summaryFile = open(summaryfname, "w")
-    taskNamesToRun = [args['taskName']]
-    # taskNamesToRun = [
-    #     "chemistry-mix", 
-    #     "chemistry-mix-paint-secondary-color", 
-    #     "find-living-thing",
-    #     "boil", "freeze",
-    #     "power-component", "power-component-renewable-vs-nonrenewable-energy",
-    #     "test-conductivity", "grow-plant", "grow-fruit"
-    # ]
     env = ScienceWorldEnv("", args['jar_path'], envStepLimit=args['env_step_limit'])
 
     taskNames = env.getTaskNames()
-
-    skip_varids = []
-    if len(args['skip_vars']):
-        skip_varids = [int(v) for v in args['skip_vars'].split(',')]
     print("Task Names: " + str(taskNames))
-    task_name_to_id = dict()
-    for id, name in enumerate(taskNames, start=0):
-        print(f"{id}: {name}")
-        task_name_to_id[name] = id
 
     num_test_variations_to_run = 1
-    for taskName in taskNamesToRun:
-        # Just get first task
-        env.load(taskName, 0, "")  # Load the task, so we have access to some extra accessors e.g. getRandomVariationTrain() )
-        taskIdx = task_name_to_id.get(taskName)
+    for taskIdx in [task_num]:
+        # Choose task
+        taskName = taskNames[taskIdx]        # Just get first task
+        env.load(taskName, 0, "")  
         print("Task Name: " + taskName)
         print("Task Description: " + str(env.getTaskDescription()))
 
-        # all_varIdx_list = env.getVariationsTest()
-        # random.shuffle(all_varIdx_list)
-        # varIdx_list = all_varIdx_list[:num_test_variations_to_run]
-        # maxVariations = env.getMaxVariations(taskName)
-
-        # getting the varIdxList for which we have gold summaries
-        varIdx_list = list(gold_summaries_map[str(taskIdx)].keys())
-
-        for varIdx in varIdx_list:
-            varIdx = int(varIdx)
-            if varIdx in skip_varids:
-                continue
-
+        for varIdx in [var_num]:
             # Initialize environment
             prev_episode_summary_str = ""
 
             # Start running episodes
             for episodeIdx in range(0, numEpisodes):
-                current_cheatsheet = ""
 
                 # Run histories
                 runHistories = []
+
                 # Save history -- and when we reach maxPerFile, export them to file
                 filenameOutPrefix = f"{output_dir}/Task{taskIdx}_Var{varIdx}_Ep{episodeIdx}_runhistories.json"
                 historyOutJSON = open(filenameOutPrefix, "w")
@@ -155,50 +121,21 @@ def clinWithPlanModel(args):
                 initialObs, initialDict = env.reset()
 
                 # Example accessors
-                # print("Possible actions: " + str(env.getPossibleActions()) )
-                # print("Possible objects: " + str(env.getPossibleObjects()) )
                 templates, lut = env.getPossibleActionObjectCombinations()
-                #print("Possible action/object combinations: " + str(templates))
-                # print("Object IDX to Object Referent LUT: " + str(lut))
                 print("Task Name: " + taskName)
-                # print("Task Variation: " + str(varIdx) + " / " + str(maxVariations))
                 print("Task Variation: " + str(varIdx))
                 print("Task Description: " + str(env.getTaskDescription()) )
-                # print("look: " + str(env.look()) )
-                # print("inventory: " + str(env.inventory()) )
-                # print("taskdescription: " + str(env.taskdescription()) )
 
-                # print("Gold memory:\n" + gold_summaries_map[str(taskIdx)][str(varIdx)])
                 gold_memory = ""
                 if use_gold_memory_in_ep0:
-                    gold_memory = gold_summaries_map[str(taskIdx)][str(varIdx)]
-                    # gold_memory += "\n21. finding exactly the object that the agent needs for a task " \
-                    #               "ENABLES faster solutions to tasks. \n" \
-                    #               "22. if exactly the object the agent needs can't be found in places you would expect " \
-                    #               "it to be, then you may need to make it.\n" \
-                    #               "23. focusing on the critical object before taking an action to modify that object " \
-                    #               "ENABLES the agent to start making progress on the task"
-
+                    if str(taskIdx) in gold_summaries_map:
+                        if str(varIdx) in gold_summaries_map[str(taskIdx)]:
+                            gold_memory = gold_summaries_map[str(taskIdx)][str(varIdx)]
+                   
                 score = 0.0
                 score_positive = 0.0
                 isCompleted = False
                 curIter = 0
-
-                # First generate high-level plan for this task
-                plan = []
-                if append_plan:
-                    summary_str = ""
-                    if args['reflect_end_of_episode']:
-                        summary_str = prev_episode_summary_str
-                    plan = get_plan_from_chatgpt(task=str(env.getTaskDescription()),
-                                                 model=gpt_model,
-                                                 reflection_str=summary_str,
-                                                 cheatsheet=current_cheatsheet,
-                                                 temperature=temperature)
-
-                    print("----------------------------------------------------------------")
-                    plan_str = '\n  * '.join(plan)
-                    print(f"HIGH level plan: {plan_str}")
 
                 # Run one episode until we reach a stopping condition (including exceeding the maximum steps)
                 generated_action_str = "look around"        # First action
@@ -210,19 +147,10 @@ def clinWithPlanModel(args):
                 subgoalHistory = [env.getGoalProgressJSON()]
                 rawActionHistory = [generated_action_str]
                 topNActionHistory = [{}]
-                planStepIdHistory = [1]
-                planStepRationaleHistory = [""]
                 stepwise_prf_history = []
-                memory_used_history = []
-                #validActionHistory = [[]]
-
                 sentenceTransformerRuntimes = []
 
-                # load gold state changes if available in gold_histories_map
-                gold_changes = get_change_in_states(gold_histories_map[str(taskIdx)].get(str(varIdx), None))
-
                 earlyStop = False
-                last_plan_step_id = 1
                 while (generated_action_str not in exitCommands) and (isCompleted == False):
                     print("----------------------------------------------------------------")
                     print ("Step: " + str(curIter))
@@ -230,33 +158,8 @@ def clinWithPlanModel(args):
                     # Send user input, get response
                     observation, reward, isCompleted, info = env.step(generated_action_str)
 
-                    # get the full state of the world
-                    full_state = env.look()
-                    # print("\n\nThe FREE LOOK: {}\n\n".format(full_state))
-
-                    # Compute cumulative PRF1 for predicted action sequence till now against
-                    # by comparing it against gold state changes
-                    runHistory = env.getRunHistory()
-                    state_change_scores = {}
-                    if gold_changes:
-                        model_changes = get_change_in_states(runHistory['history'])
-                        PRF_all = precision_recall_f1(gold_changes['all'], model_changes['all'])
-                        PRF_final = precision_recall_f1(gold_changes['final'], model_changes['final'])
-                        state_change_scores['all_state_changes'] = {
-                            "precision": PRF_all['precision'],
-                            "recall": PRF_all['recall'],
-                            "F1": PRF_all['F1'],
-                        }
-                        state_change_scores['final_state'] = {
-                            "precision": PRF_final['precision'],
-                            "recall": PRF_final['recall'],
-                            "F1": PRF_final['F1'],
-                        }
-                        step_id = len(model_changes)-1
-                        stepwise_prf_history.append(state_change_scores)
                     previous_actions.append(generated_action_str)
                     previous_rationales.append(generated_rationale_str)
-                    #observation_str = observation.split('.')[0]+"."        # Keep only the first sentence in the observation (vastly reduced history size)
                     observation_str = observation.replace("\n", " ")                           # Keep the entire history
                     previous_observations.append(observation_str)
 
@@ -290,32 +193,7 @@ def clinWithPlanModel(args):
                     while (generated_action_str == "N/A" and num_retries < max_num_retries_executor):
                         num_retries += 1
 
-                        if ablate_rationale:
-                            response, current_plan_step_id, current_plan_step_rationale = \
-                                get_clin_sw_next_action_multi_turn_ablated(
-                                task=env.getTaskDescription(),
-                                current_obs=env.look(),
-                                current_inventory=env.inventory(),
-                                objects_set=env.getPossibleObjects(),
-                                next_actions_set=env.getPossibleActions(),
-                                previous_rationales=[],
-                                previous_actions=previous_actions,
-                                previous_observations=previous_observations,
-                                model=gpt_model,
-                                plan=plan,
-                                eval_plan=eval_plan,
-                                last_plan_step_id=last_plan_step_id,
-                                cheatsheet=current_cheatsheet,
-                                summary=summary_str,
-                                temperature=temperature,
-                                quadrant=quadrant,
-                                feedback=feedback,
-                                episodeIdx=episodeIdx,
-                                ablate_grounding=ablate_grounding
-                            )
-                        else:
-                            response, current_plan_step_id, current_plan_step_rationale = \
-                                get_clin_sw_next_action_multi_turn(
+                        response = get_clin_sw_next_action_multi_turn(
                                 task=env.getTaskDescription(),
                                 current_obs=env.look(),
                                 current_inventory=env.inventory(),
@@ -325,10 +203,6 @@ def clinWithPlanModel(args):
                                 previous_actions=previous_actions,
                                 previous_observations=previous_observations,
                                 model=gpt_model,
-                                plan=plan,
-                                eval_plan=eval_plan,
-                                last_plan_step_id=last_plan_step_id,
-                                cheatsheet=current_cheatsheet,
                                 summary=summary_str,
                                 temperature=temperature,
                                 quadrant=quadrant,
@@ -336,75 +210,60 @@ def clinWithPlanModel(args):
                                 episodeIdx=episodeIdx
                             )
 
-                        generated_action_str = response["pred_next_action"]
                         generated_rationale_str = response['response_str']
-                        # Sanitize input
-                        generated_action_str = generated_action_str.lower().strip()
+                        generated_action_str = response["pred_next_action"].lower().strip()
                         print("GPT4 generated action: " + str(generated_action_str))
 
-                        if  not ablate_grounding:
-                            #if "task complete" in generated_action_str:
-                            if "TASK_COMPLETE" in response['response_str'] or \
-                                "TASK COMPLETE" in response['response_str']or \
-                                "TASKCOMPLETE" in response['response_str'] or \
-                                "task complete" in  response['response_str'] or \
-                                'successfully completed' in  response['response_str'] or \
-                                'There is no further action required' in response['response_str']:
-                                generated_action_str = "exit"
-                                best_match_action = generated_action_str
-                                topN = []
+                        if "TASK_COMPLETE" in response['response_str'] or \
+                            "TASK COMPLETE" in response['response_str']or \
+                            "TASKCOMPLETE" in response['response_str'] or \
+                            "task complete" in  response['response_str'] or \
+                            'successfully completed' in  response['response_str'] or \
+                            'There is no further action required' in response['response_str']:
+                            generated_action_str = "exit"
+                            best_match_action = generated_action_str
+                            topN = []
+                        else:
+                            valid_actions_list = info['valid']  # populated in the return from 'step'
+                            valid_actions_list = [x for x in valid_actions_list if 'reset' not in x] # remove reset from valid actions
+
+                            if "FOCUS" in response["pred_next_action"] or  "focus" in response["pred_next_action"]:
+                                valid_actions_list = [x for x in valid_actions_list if 'focus' in x]
                             else:
-                                valid_actions_list = info['valid']  # populated in the return from 'step'
-                                valid_actions_list = [x for x in valid_actions_list if 'reset' not in x] # remove reset from valid actions
+                                valid_actions_list = [x for x in valid_actions_list if 'focus' not in x]
+                            
+                            best_match_score = 0.0
+                            best_match_action = "exit"
+                            if len(valid_actions_list) == 0:
+                                # check "Ambiguous request in observation"
+                                if "Ambiguous request" in observation:
+                                    valid_actions_list = [str(x) for x in range(len(observation.split('\n')[1:]))]
 
-                                if "FOCUS" in response["pred_next_action"] or  "focus" in response["pred_next_action"]:
-                                    valid_actions_list = [x for x in valid_actions_list if 'focus' in x]
-                                else:
-                                    valid_actions_list = [x for x in valid_actions_list if 'focus' not in x]
-                                
-                                best_match_score = 0.0
-                                best_match_action = "exit"
-                                if len(valid_actions_list) == 0:
-                                    # check "Ambiguous request in observation"
-                                    if "Ambiguous request" in observation:
-                                        valid_actions_list = [str(x) for x in range(len(observation.split('\n')[1:]))]
+                            if len(valid_actions_list) > 0:
+                                # Time how long it takes to map generated next_action to one of the valid_actions?
+                                start = time.time()
+                                best_match_action, topN = get_best_matched_action_using_sent_transformer(
+                                    allowed_actions=valid_actions_list,
+                                    query=generated_action_str,
+                                    model=sent_transformer_model,
+                                    device=args['device']
+                                )
+                                end = time.time()
+                                sentenceTransformerRuntimes.append(round(end - start, 2))
 
-                                if len(valid_actions_list) > 0:
-                                    # Time how long it takes to run this
-                                    start = time.time()
-                                    best_match_action, topN = get_best_matched_action_using_sent_transformer(
-                                        allowed_actions=valid_actions_list,
-                                        query=generated_action_str,
-                                        model=sent_transformer_model,
-                                        device=args['device']
-                                    )
-                                    end = time.time()
-                                    # Save to 2 decimal places
-                                    sentenceTransformerRuntimes.append(round(end - start, 2))
+                                print("Sentence transformer runtimes: " + str(sentenceTransformerRuntimes))
 
-                                    print("Sentence transformer runtimes: " + str(sentenceTransformerRuntimes))
+                                # Check top-1 action match score, and if the score < threshold then 
+                                best_match_score = topN[0][1]
 
-                                    # Check top-1 action match score, and if the score < threshold then 
-                                    # print(f"{response["pred_next_action"]}\t{best_match_action}\t{topN}")
-                                    best_match_score = topN[0][1]
-
-                                if best_match_score > 0.9 or \
-                                    best_match_action in ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20'] or (num_retries==max_num_retries_executor) or (len(valid_actions_list) == 0) :
-                                    generated_action_str = best_match_action
-                                else:
-                                    generated_action_str = "N/A"
-                                    feedback = "Your generated action '{}' cannot be matched to a valid action. Please retry with a different phrasing or a different action.".format(response['pred_next_action'])
-                                    print(f"ERROR: retry:{num_retries}\tgen={response['pred_next_action']}\tmatch={best_match_action}\tscore{topN} feedback={feedback}")
-
-                    # append in local lists
-                    planStepIdHistory.append(current_plan_step_id)
-                    planStepRationaleHistory.append(current_plan_step_rationale)
-                    last_plan_step_id = current_plan_step_id
-
+                            if best_match_score > 0.9 or \
+                                best_match_action in ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20'] or (num_retries==max_num_retries_executor) or (len(valid_actions_list) == 0) :
+                                generated_action_str = best_match_action
+                            else:
+                                generated_action_str = "N/A"
+                                feedback = "Your generated action '{}' cannot be matched to a valid action. Please retry with a different phrasing or a different action.".format(response['pred_next_action'])
+                                print(f"ERROR: retry:{num_retries}\tgen={response['pred_next_action']}\tmatch={best_match_action}\tscore{topN} feedback={feedback}")
                     
-                    
-                    # print(list(lut.keys())[-1])
-
                     # Reasoning rationale
                     print("Reasoning rationale: " + str(response["reasoningStr"]))
                     rationaleHistory.append(response["reasoningStr"])
@@ -420,13 +279,14 @@ def clinWithPlanModel(args):
                     # Keep track of the number of commands sent to the environment in this episode
                     curIter += 1
 
-                    # Check if the last 5 actions were all the same.  If so, exit
                     if (len(previous_actions) > 5):
+                        # Check if the last 5 actions were all the same.  If so, exit
                         if (previous_actions[-1] == previous_actions[-2] == previous_actions[-3] == previous_actions[-4] == previous_actions[-5]):
                             print("Last 5 actions were the same.  Exiting.")
                             earlyStop = True
                             break
 
+                        # Check if the max num steps (here, 1.5*gold_sequence_length) have been executed.  If so, exit
                         if len(previous_actions) >= 1.5*len(env.getGoldActionSequence()):
                             print("Model generated an action sequence which is 1.5 times longer than"
                                   "the gold action sequence without succeeding at the task.  Exiting.")
@@ -459,43 +319,14 @@ def clinWithPlanModel(args):
                 # Get run history
                 runHistory = env.getRunHistory()
 
-                # get GPT-4 based summarizer for preconditions
-                # takes env.getRunHistory() as input
-
-                # Compute PRF1 for against gold state changes
-                state_change_scores = {}
-                if gold_changes:
-                    model_changes = get_change_in_states(runHistory['history'])
-                    PRF_all = precision_recall_f1(gold_changes['all'], model_changes['all'])
-                    PRF_final = precision_recall_f1(gold_changes['final'], model_changes['final'])
-                    state_change_scores['all_state_changes'] = {
-                        "precision": PRF_all['precision'],
-                        "recall": PRF_all['recall'],
-                        "F1": PRF_all['F1'],
-                    }
-                    state_change_scores['final_state'] = {
-                        "precision": PRF_final['precision'],
-                        "recall": PRF_final['recall'],
-                        "F1": PRF_final['F1'],
-                    }
-                    runHistory['state_change_scores'] = state_change_scores
-
-
                 # Add rationales to run history
-                # print(f"len(rationaleHistory) = {len(rationaleHistory)}")
-                # print(f"len(runHistory['history']) = {len(runHistory['history'])}")
-                # print(f"len(rawActionHistory) = {len(rawActionHistory)}")
                 for idx, rationaleStr in enumerate(rationaleHistory):
                     if idx >= len(runHistory['history']):
                         break
                     runHistory['history'][idx]['rationale'] = rationaleStr
                     runHistory['history'][idx]['rawAction'] = rawActionHistory[idx]
                     runHistory['history'][idx]['topNActions'] = topNActionHistory[idx]
-                    #runHistory['history'][idx]['validActions'] = validActionHistory[idx]
                     runHistory['history'][idx]['subgoalProgress'] = subgoalHistory[idx]
-                    runHistory['history'][idx]['planStepId'] = planStepIdHistory[idx]
-                    runHistory['history'][idx]['planStepRationale'] = planStepRationaleHistory[idx]
-                    runHistory['history'][idx]['state_change_scores'] = stepwise_prf_history[idx] if idx < len(stepwise_prf_history) else {}
 
                 # Also store final score
                 runHistory['episodeIdx'] = episodeIdx
@@ -505,8 +336,8 @@ def clinWithPlanModel(args):
                 runHistory['earlyStop'] = earlyStop
                 runHistory['model'] = gpt_model
                 runHistory['gold-action-seq'] = gold_path
-                runHistory['generated-plan'] = plan
                 runHistory['memory-seen'] = summary_str
+                
                 # Summarize learnings at the end of each episode and store them in the runHistory
                 # use last k  memories to summarize learnings
                 episode_summary_str = ""
@@ -524,34 +355,24 @@ def clinWithPlanModel(args):
                 runHistory['summary'] = episode_summary_str
                 prev_episode_summary_str = episode_summary_str
 
-                print("RUN HISTORY:")
-                #print(runHistory)
-                # Add to the list of run histories
-                # runHistories.append(runHistory)
-
                 # Save runHistories into a JSON file
                 print ("Writing history file: " + filenameOutPrefix)
                 memory_of_runHistories.append(runHistory)
                 json.dump(runHistory, historyOutJSON, indent=4, sort_keys=False)
                 historyOutJSON.flush()
-
-    # Episodes are finished -- manually save any last histories still in the buffer
-    # env.saveRunHistoriesBufferIfFull(filenameOutPrefix, maxPerFile=args['max_episode_per_file'], forceSave=True)
+                historyOutJSON.close()
 
     # Show final episode scores to user:
     # avg = sum([x for x in finalScores if x >=0]) / len(finalScores)     # Clip negative scores to 0 for average calculation
     print("")
     print("---------------------------------------------------------------------")
     print(" Summary (ChatGPT Agent)")
-    print(f" taskIdx_list : {taskNamesToRun}")
     print(" Simplifications: " + str(simplificationStr))
     print("---------------------------------------------------------------------")
     print(f"task\tName\tvar\tepi\tscore\tcomplete?")
     for finalScore in finalScores:
         print(f"{finalScore['taskIdx']}\t{finalScore['taskName']}\t{finalScore['variationIdx']}\t"
               f"{finalScore['episodeIdx']}\t{finalScore['final_score']}\t{finalScore['isCompleted']}")
-    # print(" Episode scores: " + str(finalScores))
-    # print(" Average episode score: " + str(avg))
     print("---------------------------------------------------------------------")
     print("")
 
@@ -560,7 +381,6 @@ def clinWithPlanModel(args):
     summaryFile.write(f"" + '\n')
     summaryFile.write("---------------------------------------------------------------------" + '\n')
     summaryFile.write(" Summary (ChatGPT Agent)" + '\n')
-    # summaryFile.write(f" taskIdx_list : {taskIdx_list}" + '\n')
     summaryFile.write(" Simplifications: " + str(simplificationStr) + '\n')
     summaryFile.write("---------------------------------------------------------------------" + '\n')
     summaryFile.write(f"task\tName\tvar\tepi\tscore\tcomplete?" + '\n')
@@ -601,55 +421,36 @@ def parse_args():
     parser = argparse.ArgumentParser(desc)
     parser.add_argument("--jar_path", type=str,
                         help="Path to the ScienceWorld jar file. Default: use builtin.")
-    # parser.add_argument("--task-num", type=str, default="4",
-    #                     help="Specify the task number to play. Default: %(default)s")
-    # parser.add_argument("--var-num", type=int, default=1,
-    #                     help="Specify the task variation number to play. Default: %(default)s")
+    parser.add_argument("--task-num", type=str, default="4",
+                        help="Specify the task number to play. Default: %(default)s")
+    parser.add_argument("--var-num", type=int, default=1,
+                        help="Specify the task variation number to play. Default: %(default)s")
     parser.add_argument("--env-step-limit", type=int, default=100,
                         help="Maximum number of steps per episode. Default: %(default)s")
     parser.add_argument("--num-episodes", type=int, default=2,
                         help="Number of episodes to play. Default: %(default)s")
-    parser.add_argument("--output-path-prefix", default="save-histories",
-                        help="Path prefix to use for saving episode transcripts. Default: %(default)s")
-    parser.add_argument("--max-episode-per-file", type=int, default=1000,
-                        help="Maximum number of episodes per transcript file. Default: %(default)s")
     parser.add_argument("--gpt-model", type=str, default="gpt-4-0613",
                         help="Choose GPT model to use ['gpt-3.5-turbo', 'gpt-4-0613']. Default: %(default)s")
-    parser.add_argument("--append-plan", type=int, default=0,
-                        help="Always add plan to the general prompt")
-    parser.add_argument("--execute-plan-step-by-step", type=int, default=0,
-                        help="Execute plan step by step")
-    parser.add_argument("--eval-plan", type=int, default=0,
-                        help="Evaluate plan steps")
-    parser.add_argument("--skip-vars", type=str, default="",
-                        help="Skip these VarIds when running trials.")
-    parser.add_argument("--reflect-end-of-episode", type=int, default=0,
-                        help="Reflect at the end of episode")
     parser.add_argument("--summarize_end_of_episode", type=int, default=1,
                         help="Summarize at the end of episode (for preconditions)")
-    parser.add_argument("--use-given-cheatsheet", type=int, default=0,
-                        help="Use cheasheet given as input")
-    parser.add_argument("--device", type=str,
+    parser.add_argument("--device", type=str, required=True,
                         help="Select device to be used by sentence transformer. ['cpu', 'cuda', 'cuda:0']")
-    parser.add_argument("--taskName", type=str,
-                        help="Select a taskName to run")
     parser.add_argument("--temperature", type=float, default=0.0,
                         help="Select temperature for running chatgpt completion api")
+    parser.add_argument("--use-gold-memory-in-ep0", type=int, default=0,
+                        help="Use gold memory and seed learnings in episode 0.")
     parser.add_argument("--gold-traces", type=str, default="",
                         help="Gold action sequences and corresponding observations.")
     parser.add_argument("--use-last-k-memories", type=int, default=3,
                         help="Use last k memories when summarizing learnings.")
-    parser.add_argument("--use-gold-memory-in-ep0", type=int, default=0,
-                        help="Use gold memory and seed learnings in episode 0.")
-    parser.add_argument("--ablate-rationale", type=int, default=0,
-                        help="If set as 1, do not rationale/goal before generating next-action")
-    parser.add_argument("--ablate-grounding", type=int, default=0,
-                        help="If set as 1, do not include any tricks to ground gpt-4 in SW environment.")
     parser.add_argument("--quadrant", type=int,
                         help="Specify the quadrant in which the model is being evaluated."\
-                        "1: same task/same world, 2: same task/different world, "\
-                        "3: different task, same world, 4: different task, different world.")
-
+                        "1: (adapt) same task/same world, "\
+                        "2: (gen-env) same task/different world, "\
+                        "3: (gen-task) different task, same world")
+    parser.add_argument("--output-path-prefix", default="save-histories",
+                        help="Path prefix to use for saving episode transcripts. Default: %(default)s")
+    
     simplification_group = parser.add_argument_group('Game simplifications')
     simplification_group.add_argument("--simplifications-preset", choices=['easy'],
                                       help="Choose a preset among: 'easy' (apply all possible simplifications).")
@@ -670,11 +471,11 @@ def parse_args():
 
 
 def main():
-    print("ScienceWorld 1.0 API Examples - CLIN with Plan Agent")
+    print("ScienceWorld 1.0 API Examples - CLIN Agent")
     # Parse command line arguments
     args = parse_args()
     args["simplification_str"] = build_simplification_str(args)
-    clinWithPlanModel(args)
+    clinAgent(args)
 
 
 if __name__ == "__main__":
