@@ -1,3 +1,5 @@
+# CLIN: A Continually Learning Language Agent for Rapid Task Adaptation and Generalization
+
 This directory contains code to do interactive continual learning with ScienceWorld environment.
 
 Install Java
