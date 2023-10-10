@@ -14,7 +14,7 @@ export OPENAI_API_KEY=<your key>  # would need access to one of these 2 models: 
 
 ```
 
-Alinging to the latest SW; somewhere outside the CLIN repo
+Installing ScienceWorld
 
 ```
 cd ..

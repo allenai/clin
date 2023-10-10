@@ -1,5 +1,3 @@
-scienceworld==1.1.3
 openai
 sentence_transformers
 tiktoken
-
