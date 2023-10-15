@@ -483,8 +483,9 @@ def summarize_trace_for_preconditions_sTsW(current_run,
             if tokens_trace + tokens_prev_mem > total_budget:
                 trace = ' '.join(trace.split(' ')[(total_budget - tokens_trace - tokens_prev_mem):])
             memories['trace'] = trace
-                
-    final_trace = memories['trace'] + "\n\nList of advice:" if quadrant == 0 else ""
+
+    final_trace = memories['trace'] 
+    final_trace += "\n\nList of advice:" if quadrant == 0 else ""
     final_prev_memories = ""
     if memories['prev_memory']:
         final_prev_memories = format_memory(memories['prev_memory'])
@@ -492,7 +493,8 @@ def summarize_trace_for_preconditions_sTsW(current_run,
         if len(memories['meta_memory']) > 0:
             final_prev_memories = "META LEARNINGS:\n" + memories['meta_memory'] + final_prev_memories
 
-    summary = summarize(final_trace, final_prompt, system_prompt, prev_memories=final_prev_memories,
+    summary = summarize(trace=final_trace, summary_prompt=final_prompt, 
+                        system_prompt=system_prompt, prev_memories=final_prev_memories,
                         model=model, temp=temp, tokens=1000)
 
     print("SUMMARY: {}".format(summary))
