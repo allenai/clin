@@ -18,7 +18,7 @@
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="./static/css/index.css">
-  <link rel="icon" href="./static/images/favicon.svg">
+  <link rel="icon" href="./static/images/ai2_website_top.png">
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script defer src="./static/js/fontawesome.all.min.js"></script>
@@ -39,31 +39,31 @@
             <span class="author-block">
               <a href="https://www.majumderb.com/">Bodhisattwa Prasad Majumder</a><sup>1</sup>,</span>
             <span class="author-block">
-              <a href="https://allenai.org/team/bhavanad">Bhavana Dalvi Mishra</a><sup>2</sup>,</span>
+              <a href="https://allenai.org/team/bhavanad">Bhavana Dalvi Mishra</a><sup>1</sup>,</span>
             <span class="author-block">
-              <a href="https://cognitiveai.org/">Peter Jansen</a><sup>2</sup>,
+              <a href="https://cognitiveai.org/">Peter Jansen</a><sup>1,2</sup>,
             </span>
             <span class="author-block">
-              <a href="https://allenai.org/team/oyvindt">Oyvind Tafjord</a><sup>2</sup>,
+              <a href="https://allenai.org/team/oyvindt">Oyvind Tafjord</a><sup>1</sup>,
             </span>
             <span class="author-block">
-              <a href="https://niket.tandon.info/">Niket Tandon</a><sup>2</sup>,
+              <a href="https://niket.tandon.info/">Niket Tandon</a><sup>1</sup>,
             </span>
             <span class="author-block">
-              <a href="https://zharry29.github.io/">Li Zhang</a><sup>1,2</sup>,
+              <a href="https://zharry29.github.io/">Li Zhang</a><sup>3</sup>,
             </span>
             <span class="author-block">
-              <a href="https://www.cis.upenn.edu/~ccb/">Chris Callison-Burch</a><sup>2</sup>
+              <a href="https://www.cis.upenn.edu/~ccb/">Chris Callison-Burch</a><sup>3</sup>,
             </span>
             <span class="author-block">
-              <a href="https://allenai.org/team/peterc">Peter Clark</a><sup>2</sup>
+              <a href="https://allenai.org/team/peterc">Peter Clark</a><sup>1</sup>
             </span>
           </div>
 
           <div class="is-size-5 publication-authors">
             <span class="author-block"><sup>1</sup>Allen Institute of AI</span>,
             <span class="author-block"><sup>2</sup>University of Arizona</span>,
-            <span class="author-block"><sup>2</sup>University of Pennsylvania</span>
+            <span class="author-block"><sup>3</sup>University of Pennsylvania</span>
           </div>
 
           <div class="column has-text-centered">
@@ -78,7 +78,7 @@
                   <span>Paper</span>
                 </a>
               </span>
-              <span class="link-block">
+              <!-- <span class="link-block">
                 <a href=""
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
@@ -86,9 +86,9 @@
                   </span>
                   <span>arXiv</span>
                 </a>
-              </span>
+              </span> -->
               <!-- Video Link. -->
-              <span class="link-block">
+              <!-- <span class="link-block">
                 <a href=""
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
@@ -96,10 +96,10 @@
                   </span>
                   <span>Video</span>
                 </a>
-              </span>
+              </span> -->
               <!-- Code Link. -->
               <span class="link-block">
-                <a href=""
+                <a href="https://github.com/allenai/clin"
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="fab fa-github"></i>
@@ -108,14 +108,14 @@
                   </a>
               </span>
               <!-- Dataset Link. -->
-              <span class="link-block">
+              <!-- <span class="link-block">
                 <a href=""
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="far fa-images"></i>
                   </span>
                   <span>Data</span>
-                  </a>
+                  </a> -->
             </div>
 
           </div>
@@ -125,8 +125,6 @@
   </div>
 </section>
 
-
-
 <section class="section">
   <div class="container is-max-desktop">
     <!-- Abstract. -->
@@ -135,7 +133,7 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            We present the first architecture for a novel nonparametric continual learning paradigm.
+            Language agents have shown some ability to interact with an external environment, e.g., a virtual world such as ScienceWorld, to perform complex tasks, e.g.,  growing a plant, without the startup costs of reinforcement learning. However, despite their zero-shot capabilities these agents to date do not continually improve over time, beyond performance refinement on a specific task. Here we present CLIN, the first language-based agent to achieve this, so that it continually improves over multiple trials, including when both the environment and task are varied, and without requiring parameter updates. Our approach is to use a persistent, dynamic, textual memory, centered on causal abstractions (rather than general "helpful hints"), that is regularly updated after each trial so that the agent gradually learns useful knowledge for new trials. In the ScienceWorld benchmark, CLIN is able to continually improve on repeated trials on the same task and environment, outperforming state-of-the-art reflective language agents like Reflexion by 23 absolute points. CLIN can also transfer its learning to new environments (or new tasks), improving its zero-shot performance by 4 points (13 for new tasks) and can further improve performance there through continual memory updates, enhancing performance by an additional 17 points (7 for new tasks). This suggests a new architecture for agents built on frozen models that can still continually and rapidly improve over time.
           </p>
           <p>
             
@@ -153,10 +151,10 @@
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
     <pre><code>@article{majumder2023clin,
-  author    = {},
-  title     = {},
-  journal   = {},
-  year      = {2023},
+  author    = "Majumder, Bodhisattwa Prasad and Dalvi Mishra, Bhavana and Jansen, Peter and Tafjord, Oyvind and Tandon, Niket and Zhang, Li and Callison-Burch, Burch and Clark, Peter",
+  title     = "CLIN: A Continually Learning Language Agent for Rapid Task Adaptation and Generalization",
+  journal   = "arXiv",
+  year      = "2023",
 }</code></pre>
   </div>
 </section>
@@ -165,13 +163,14 @@
 <footer class="footer">
   <div class="container">
     <div class="columns is-centered">
-      <div class="column is-8">
+      <!-- <div class="column is-8"> -->
         <div class="content">
-          <p> Thank you for this great <a
+          <p>All rights reserved <a
+          href="https://allenai.org/">@Allen Institute of AI</a>. Thank you for this great <a
             href="https://github.com/nerfies/nerfies.github.io">website template</a>!
           </p>
         </div>
-      </div>
+      <!-- </div> -->
     </div>
   </div>
 </footer>
