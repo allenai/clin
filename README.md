@@ -1,6 +1,14 @@
 # CLIN: A Continually Learning Language Agent for Rapid Task Adaptation and Generalization
 
-Code for interactive continual learning with ScienceWorld environment.
+<a href="https://allenai.github.io/clin/">
+    <img src="https://img.shields.io/badge/Project Page-red">
+  </a>
+  <a href="https://arxiv.org/pdf/2310.10134.pdf">
+    <img src="https://img.shields.io/badge/Paper-blue">
+  </a> 
+</p>
+
+## Code for interactive continual learning with ScienceWorld environment.
 
 Step 1: Install Java
 You will have to have Java 1.8+ installed on your system (shipped with most Linux distributions).
