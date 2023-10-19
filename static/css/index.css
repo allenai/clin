@@ -1,7 +1,26 @@
 body {
   font-family: 'Noto Sans', sans-serif;
+  font-size: 15px;
+  color:rgb(0, 0, 0);
 }
 
+/* .column {
+  float: left;
+  width: 50%;
+  padding: 5px;
+}
+
+/* Clear floats after image containers */
+/* .row::after {
+  content: "";
+  clear: both;
+  display: table;
+} */
+
+img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto }
 
 .footer .icon-link {
     font-size: 25px;
@@ -71,7 +90,7 @@ body {
 }
 
 .publication-authors a {
-   color: hsl(204, 86%, 53%) !important;
+   color: hsl(229, 86%, 53%) !important;
 }
 
 .publication-authors a:hover {
