@@ -46,3 +46,13 @@ Step 5: Example command to run CLIN agent for ScienceWorld
 ```
 python scienceworld/clin_agent.py --task-num "4" --var-num 1 --env-step-limit 2 --num-episodes 1  --gpt-model "gpt-4-0613" --summarize_end_of_episode 1  --device "cpu"  --temperature 0.0  --use-gold-memory-in-ep0 0 --gold-traces "" --use-last-k-memories 3 --quadrant 1 --simplifications-preset "easy" --output-path-prefix logs/testrun/
 ```
+
+## Citation
+```bib
+@article{majumder2023clin,
+  author    = "Majumder, Bodhisattwa Prasad and Dalvi Mishra, Bhavana and Jansen, Peter and Tafjord, Oyvind and Tandon, Niket and Zhang, Li and Callison-Burch, Burch and Clark, Peter",
+  title     = "CLIN: A Continually Learning Language Agent for Rapid Task Adaptation and Generalization",
+  journal   = "arXiv",
+  year      = "2023",
+}
+```
